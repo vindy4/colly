@@ -22,7 +22,7 @@ type Course struct {
 }
 
 func main() {
-	fName := "courses.json"
+	fName := "yelp.json"
 	file, err := os.Create(fName)
 	if err != nil {
 		log.Fatalf("Cannot create file %q: %s\n", fName, err)
@@ -33,7 +33,7 @@ func main() {
 	// Instantiate default collector
 	c := colly.NewCollector(
 		// Visit only domains: coursera.org, www.coursera.org
-		colly.AllowedDomains("coursera.org", "www.coursera.org"),
+		colly.AllowedDomains("yelp.com", "www.yelp.com"),
 
 		// Cache responses to prevent multiple download of pages
 		// even if the collector is restarted
