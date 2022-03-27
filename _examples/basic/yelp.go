@@ -1,13 +1,12 @@
 package main
 
 import (
-	"encoding/json"
+	"encoding/csv"
 	"fmt"
 	"log"
 	"net/url"
 	"os"
 	"regexp"
-	"strings"
 	"time"
 
 	"github.com/gocolly/colly/v2"
@@ -21,6 +20,7 @@ type Buisness struct {
 	Address   string
 	Claimed   string //  verified vendor or not
 	BizURL    string
+	BizEmail  string
 }
 
 //======= below we define selector constants based on each paage
@@ -30,21 +30,6 @@ const buisneesMainDiv = `div[data-hypernova-key="yelpfrontend__180__yelpfrontend
 
 // on yelp search page
 
-// GetStringInBetween Returns empty string if no start string found
-func GetStringInBetween(str string, start string, end string) (result string) {
-	s := strings.Index(str, start)
-	if s == -1 {
-		return
-	}
-	s += len(start)
-	e := strings.Index(str[s:], end)
-	if e == -1 {
-		return
-	}
-	e += s + e - 1
-	return str[s:e]
-}
-
 func main() {
 	// Instantiate default collector
 	c := colly.NewCollector(
@@ -52,39 +37,46 @@ func main() {
 	// colly.AllowedDomains("https://www.yelp.com/", "yelp.com/"),
 	)
 
-	fName := "yelp" + time.Now().String() + ".json"
+	allBiz := make([]Buisness, 0)
+
+	fName := "yelp" + time.Now().String() + ".csv"
+
 	file, err := os.Create(fName)
 	if err != nil {
-		log.Fatalf("Cannot create file %q: %s\n", fName, err)
-		return
+		log.Fatalln("failed to open file", err)
 	}
 	defer file.Close()
 
-	allbiz := make([]Buisness, 0)
+	w := csv.NewWriter(file)
+	defer w.Flush()
 
-	//
+	//  try to find email on buisness url
 	c.OnHTML("a[href^='mailto:']", func(e *colly.HTMLElement) {
+		fmt.Println(e.Text, " yaha kya milta h in mail ", e.Request.URL.String())
 
-		fmt.Println(e.Text, " yaha kya milta h in mail ")
+		for _, b := range allBiz {
+			if b.BizURL == e.Request.URL.String() {
+				b.BizEmail = e.Text
+			}
+		}
+
 	})
 
 	// On every a element which has href attribute call callback
 	// this is to find all the buisnees cards and then open that buisness on yelp
 	c.OnHTML("span.css-1egxyvc", func(e *colly.HTMLElement) {
 
-		var url string
+		var buisnessUrl string
 		for _, v := range e.DOM.Children().Nodes {
 			attrs := v.Attr
 			for _, k := range attrs {
 				if k.Key == "href" {
-					url = "https://www.yelp.com" + k.Val
+					buisnessUrl = "https://www.yelp.com" + k.Val
 				}
 			}
 
 		}
-		// pageLenght := e.ChildText(".pagination__09f24__VRjN4.border--top__09f24__exYYb.border--bottom__09f24___mg5X.border-color--default__09f24__NPAKY")
-		// Only those links are visited which are in AllowedDomains
-		c.Visit(e.Request.AbsoluteURL(url))
+		c.Visit(e.Request.AbsoluteURL(buisnessUrl))
 
 	})
 
@@ -120,7 +112,7 @@ func main() {
 		}
 		fmt.Println("biz url  ", bizurl)
 
-		newBiz := Buisness{
+		allBiz = append(allBiz, Buisness{
 			Name:      bizName,
 			ContactNo: contactNo,
 			Address:   address,
@@ -128,9 +120,7 @@ func main() {
 			Claimed:   claimed,
 			BizURL:    bizurl,
 			YelpURL:   e.Request.URL.String(),
-		}
-
-		allbiz = append(allbiz, newBiz)
+		})
 
 		c.Visit(e.Request.AbsoluteURL(bizurl))
 	})
@@ -141,11 +131,28 @@ func main() {
 	})
 
 	// Start scraping
-	c.Visit("https://www.yelp.com/search?find_desc=science+camp&find_loc=Miami%2C+FL&start=10")
+	c.Visit("https://www.yelp.com/search?find_desc=Math+Tutoring+Center&find_loc=Miami%2C+FL&start=10")
 
-	enc := json.NewEncoder(file)
-	enc.SetIndent("", "  ")
+	// add heading
+	headerRow := []string{"Name",
+		"YelpURL",
+		"Timings ",
+		"ContactNo",
+		"Address",
+		"Claimed",
+		"BizURL"}
 
-	// Dump json to the standard output
-	enc.Encode(allbiz)
+	err = w.Write(headerRow)
+	if err != nil {
+		fmt.Println(" error in writing header")
+	}
+
+	// Using Write
+	for _, b := range allBiz {
+		row := []string{b.Name, b.YelpURL, b.Timings, b.Claimed, b.Address, b.Claimed, b.BizURL}
+		if err := w.Write(row); err != nil {
+			log.Fatalln("error writing record to file", err)
+		}
+	}
+
 }
