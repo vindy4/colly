@@ -4,9 +4,12 @@ import (
 	"encoding/csv"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gocolly/colly/v2"
@@ -23,12 +26,15 @@ type Buisness struct {
 	BizEmail  string
 }
 
+const searchURL = "https://www.yelp.com/search?find_desc=Math+Tutoring+Center&find_loc=Miami%2C+FL"
+
 //======= below we define selector constants based on each paage
 
 // on buisnees page
-const buisneesMainDiv = `div[data-hypernova-key="yelpfrontend__180__yelpfrontend__GondolaBizDetails__dynamic"]`
+const buisneesMainDiv = `yelp-react-root > div`
 
 // on yelp search page
+const totalPageSelector = `[role="navigation"] > div:last-child > span`
 
 func main() {
 	// Instantiate default collector
@@ -39,7 +45,10 @@ func main() {
 
 	allBiz := make([]Buisness, 0)
 
-	fName := "yelp" + time.Now().String() + ".csv"
+	loc, _ := time.LoadLocation("Asia/Kolkata")
+	now := time.Now().In(loc).Format("2006-01-02 15:04:05")
+
+	fName := "yelp" + now + ".csv"
 
 	file, err := os.Create(fName)
 	if err != nil {
@@ -62,8 +71,30 @@ func main() {
 
 	})
 
-	// On every a element which has href attribute call callback
-	// this is to find all the buisnees cards and then open that buisness on yelp
+	//
+	c.OnHTML(totalPageSelector, func(e *colly.HTMLElement) {
+
+		fmt.Println("\n\n\n\n yaha bhi aya tha", e.Text)
+
+		plDesc := strings.Split(e.Text, " ")
+		pageLength := plDesc[len(plDesc)-1]
+		value, err := strconv.Atoi(pageLength)
+
+		if err != nil {
+			fmt.Println("error in finding the page length---------------------------- ")
+		}
+
+		for i := 1; i < value; i++ {
+			fmt.Println(" \n new search page url \n ", searchURL+"&start="+strconv.Itoa(i*10))
+			rand.Seed(time.Now().UnixNano())
+			n := rand.Intn(10) // n will be between 0 and 10
+			time.Sleep(time.Duration(n) * time.Second)
+			c.Visit(searchURL + "&start=" + strconv.Itoa(i*10))
+		}
+
+	})
+
+	// this is to find out the buisness cards that are shown on yelp page
 	c.OnHTML("span.css-1egxyvc", func(e *colly.HTMLElement) {
 
 		var buisnessUrl string
@@ -84,10 +115,10 @@ func main() {
 
 		bizName := e.ChildText("h1.css-12dgwvn")
 		urlText := e.ChildText("div.css-xp8w2v.padding-t2__09f24__Y6duA.padding-r2__09f24__ByXi4.padding-b2__09f24__F0z5y.padding-l2__09f24__kf_t_.border--top__09f24__exYYb.border--right__09f24__X7Tln.border--bottom__09f24___mg5X.border--left__09f24__DMOkM.border-radius--regular__09f24__MLlCO.background-color--white__09f24__ulvSM > div > div > div > p  a[target=_blank]")
-		contactNo := e.ChildText("div.css-xp8w2v.padding-t2__09f24__Y6duA.padding-r2__09f24__ByXi4.padding-b2__09f24__F0z5y.padding-l2__09f24__kf_t_.border--top__09f24__exYYb.border--right__09f24__X7Tln.border--bottom__09f24___mg5X.border--left__09f24__DMOkM.border-radius--regular__09f24__MLlCO.background-color--white__09f24__ulvSM > div > div > div > p.css-1p9ibgf")
+		contactNo := e.ChildText("div.css-xp8w2v.padding-t2__09f24__Y6duA.padding-r2__09f24__ByXi4.padding-b2__09f24__F0z5y.padding-l2__09f24__kf_t_.border--top__09f24__exYYb.border--right__09f24__X7Tln.border--bottom__09f24___mg5X.border--left__09f24__DMOkM.border-radius--regular__09f24__MLlCO.background-color--white__09f24__ulvSM > div:nth-child(2) > div > div")
 		address := e.ChildText("div.css-xp8w2v.padding-t2__09f24__Y6duA.padding-r2__09f24__ByXi4.padding-b2__09f24__F0z5y.padding-l2__09f24__kf_t_.border--top__09f24__exYYb.border--right__09f24__X7Tln.border--bottom__09f24___mg5X.border--left__09f24__DMOkM.border-radius--regular__09f24__MLlCO.background-color--white__09f24__ulvSM > div > div > div > p.css-qyp8bo")
 		timings := e.ChildText("table.hours-table__09f24__KR8wh.table__09f24__J2OBP.table--simple__09f24__vy16f")
-		claimed := e.ChildText("span.claim-text--light__09f24__BSQOJ.css-q8l0re")
+		claimed := e.ChildText("span[tabindex='0']")
 
 		bizurl := e.ChildAttr("div.css-xp8w2v.padding-t2__09f24__Y6duA.padding-r2__09f24__ByXi4.padding-b2__09f24__F0z5y.padding-l2__09f24__kf_t_.border--top__09f24__exYYb.border--right__09f24__X7Tln.border--bottom__09f24___mg5X.border--left__09f24__DMOkM.border-radius--regular__09f24__MLlCO.background-color--white__09f24__ulvSM > div > div > div > p  a[target=_blank]", "href")
 
@@ -131,7 +162,7 @@ func main() {
 	})
 
 	// Start scraping
-	c.Visit("https://www.yelp.com/search?find_desc=Math+Tutoring+Center&find_loc=Miami%2C+FL&start=10")
+	c.Visit(searchURL)
 
 	// add heading
 	headerRow := []string{"Name",
